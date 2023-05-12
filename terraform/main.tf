@@ -4,11 +4,11 @@ provider "aws" {
 }
 
 variable "jar" {
-  default = "demo-0.0.1-SNAPSHOT-aws.jar"
+  default = "demo-0.0.1-SNAPSHOT.jar"
 }
 
 variable "handler" {
-  default = "com.example.demo.RequestHandler"
+  default = "com.example.demo.AsyncLambdaHandler::handleRequest"
 }
 
 data "aws_caller_identity" "current" {}
@@ -81,7 +81,7 @@ resource "aws_api_gateway_resource" "gateway_resource" {
 resource "aws_api_gateway_method" "method" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.gateway_resource.id
-  http_method   = "GET" # replace with your desired HTTP method
+  http_method   = "ANY" # replace with your desired HTTP method
   authorization = "NONE" # replace with your desired authorization type
   depends_on    = [aws_api_gateway_rest_api.api, aws_api_gateway_resource.gateway_resource]
 }
@@ -97,6 +97,43 @@ resource "aws_api_gateway_integration" "integration" {
 
   depends_on = [aws_api_gateway_rest_api.api, aws_api_gateway_resource.gateway_resource, aws_api_gateway_method.method, aws_lambda_function.function]
 }
+
+resource "aws_api_gateway_deployment" "deploy" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+
+  triggers = {
+    redeployment = sha1(jsonencode(aws_api_gateway_rest_api.api.body))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_api_gateway_rest_api.api]
+}
+
+resource "aws_api_gateway_stage" "dev" {
+  deployment_id = aws_api_gateway_deployment.deploy.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  stage_name    = "dev"
+
+  depends_on = [aws_api_gateway_deployment.deploy
+    ,aws_api_gateway_rest_api.api]
+}
+
+#resource "aws_api_gateway_method_settings" "example" {
+#  rest_api_id = aws_api_gateway_rest_api.api.id
+#  stage_name  = aws_api_gateway_stage.dev.stage_name
+#  method_path = "*/*"
+#
+#  settings {
+#    metrics_enabled = true
+#    logging_level   = "INFO"
+#  }
+#
+#  depends_on = [aws_api_gateway_rest_api.api, aws_api_gateway_stage.dev]
+#}
+
 #
 ## Define the API Gateway method response
 #resource "aws_api_gateway_method_response" "method_response" {
